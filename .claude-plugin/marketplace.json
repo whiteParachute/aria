@@ -11,6 +11,12 @@
       "description": "Persistent long-term memory system for Claude Code with multi-layer retrieval, automatic session wrapup, and periodic maintenance.",
       "source": "./aria-memory",
       "category": "productivity"
+    },
+    {
+      "name": "aria-proactive",
+      "description": "Proactive messaging skills for Aria — spawn fresh headless sessions to send Telegram messages without conflicting with the current session's plugin polling.",
+      "source": "./aria-proactive",
+      "category": "productivity"
     }
   ]
 }

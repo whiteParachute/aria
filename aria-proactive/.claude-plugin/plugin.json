@@ -1,0 +1,10 @@
+{
+  "name": "aria-proactive",
+  "version": "0.1.0",
+  "description": "Proactive messaging skills for Aria — spawn fresh headless sessions to send Telegram messages without conflicting with the current session's plugin polling.",
+  "author": {
+    "name": "ar8327"
+  },
+  "license": "MIT",
+  "keywords": ["proactive", "telegram", "scheduling", "headless"]
+}
