@@ -1,0 +1,10 @@
+{
+  "name": "aria-memory",
+  "version": "0.1.0",
+  "description": "Persistent long-term memory system for Claude Code with multi-layer retrieval, automatic session wrapup, and periodic maintenance.",
+  "author": {
+    "name": "ar8327"
+  },
+  "license": "MIT",
+  "keywords": ["memory", "context", "persistence", "knowledge-management"]
+}

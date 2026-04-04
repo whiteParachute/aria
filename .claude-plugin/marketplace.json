@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "aria-local",
+  "description": "Local marketplace for Aria plugins",
+  "owner": {
+    "name": "ar8327"
+  },
+  "plugins": [
+    {
+      "name": "aria-memory",
+      "description": "Persistent long-term memory system for Claude Code with multi-layer retrieval, automatic session wrapup, and periodic maintenance.",
+      "source": "./aria-memory",
+      "category": "productivity"
+    }
+  ]
+}
