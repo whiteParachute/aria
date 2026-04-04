@@ -42,7 +42,8 @@ print(f"Pending wrapups:   {pending}")
 
 last = meta.get('lastGlobalSleepAt')
 if last:
-    diff = time.time() - datetime.fromisoformat(last).timestamp()
+    # Python < 3.11 doesn't support 'Z' suffix in fromisoformat
+    diff = time.time() - datetime.fromisoformat(last.replace('Z', '+00:00')).timestamp()
     hours = int(diff / 3600)
     print(f"Last maintenance:  {last} ({hours} hours ago)")
 else:

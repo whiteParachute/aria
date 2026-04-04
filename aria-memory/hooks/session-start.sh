@@ -94,10 +94,12 @@ if not last:
     hours_ago = 999999
     last_ts = 0
 else:
-    diff = time.time() - datetime.fromisoformat(last).timestamp()
+    # Python < 3.11 doesn't support 'Z' suffix in fromisoformat
+    last_fixed = last.replace('Z', '+00:00')
+    diff = time.time() - datetime.fromisoformat(last_fixed).timestamp()
     last_str = last
     hours_ago = int(diff / 3600)
-    last_ts = datetime.fromisoformat(last).timestamp()
+    last_ts = datetime.fromisoformat(last_fixed).timestamp()
 
 # Count impression files newer than last global_sleep
 unprocessed = 0
