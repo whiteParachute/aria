@@ -71,6 +71,7 @@ memoryDir/
 ├── knowledge/        — 按领域组织的详细知识
 ├── impressions/      — 按会话组织的语义索引文件
 ├── impressions/archived/ — 超过 6 个月的旧 impression
+├── daily/            — Daily Notes（每天一个 YYYY-MM-DD.md）
 ├── .obsidian/        — Obsidian 配置（忽略，不读不写不搜索）
 └── .git/             — Git 同步（忽略）
 ```
@@ -327,6 +328,34 @@ type: meta
 ```
 
 **膨胀控制**：如果 changelog.md 超过 500 行，将旧条目（超过 3 个月的）归档到 `changelog-YYYY-Qn.md`（按季度分片），只在主文件保留最近 3 个月的记录。
+
+#### 步骤 9：追加 Daily Note
+
+在 `daily/YYYY-MM-DD.md`（使用 sessionDate）追加本次会话的一行摘要。
+
+如果文件不存在，创建它：
+```markdown
+---
+title: "YYYY-MM-DD"
+type: daily
+date: YYYY-MM-DD
+---
+
+# YYYY-MM-DD
+```
+
+然后在文件末尾追加一行：
+```markdown
+- HH:MM [[impression文件名]] — 一句话会话摘要
+```
+
+示例：
+```markdown
+- 20:45 [[2026-04-07_aria-memory-obsidian-sync]] — vault 同步方案确定，Phase 1+2 完成
+- 10:00 [[2026-04-07_bits-pipeline-fix]] — pipeline 14 修复，提了 PR#42
+```
+
+HH:MM 使用 UTC+8 北京时间。如果无法精确获取会话时间，从 transcript 的第一条消息 timestamp 推算。
 
 ---
 
