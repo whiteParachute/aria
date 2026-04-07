@@ -11,6 +11,11 @@ if [ ! -d "$MEMORY_DIR" ]; then
   bash "${CLAUDE_PLUGIN_ROOT}/scripts/init-memory-dir.sh"
 fi
 
+# === 0. Git sync: pull remote changes (from Obsidian/Mac) ===
+if [ -d "$MEMORY_DIR/.git" ]; then
+  (cd "$MEMORY_DIR" && git pull --rebase --quiet origin main 2>/dev/null) || true
+fi
+
 CONTEXT=""
 
 # === 1. 注入 index.md ===

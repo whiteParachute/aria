@@ -67,13 +67,33 @@ memoryDir/
 ├── index.md          — 随身索引（~200 条上限）
 ├── meta.json         — 元数据（indexVersion、totalImpressions、totalKnowledgeFiles、pendingWrapups）
 ├── personality.md    — 用户交互风格记录
+├── changelog.md      — 变更日志（每次 wrapup/sleep 追加记录）
 ├── knowledge/        — 按领域组织的详细知识
 ├── impressions/      — 按会话组织的语义索引文件
-└── impressions/archived/ — 超过 6 个月的旧 impression
+├── impressions/archived/ — 超过 6 个月的旧 impression
+├── .obsidian/        — Obsidian 配置（忽略，不读不写不搜索）
+└── .git/             — Git 同步（忽略）
 ```
 
 注意：对话记录（transcripts）不复制到记忆目录。Claude Code 自动维护 transcript 文件于
 `~/.claude/projects/[project-path]/[session-id].jsonl`，wrapup 时直接读取原始路径。
+
+## 忽略目录
+
+在所有操作（Glob、Grep、Read、ls）中，**必须排除**以下目录：
+- `.obsidian/` — Obsidian 编辑器配置
+- `.git/` — Git 版本控制
+- `transcripts/` — 原始会话记录（仅 wrapup 时通过完整路径读取）
+
+Glob 示例：使用 `knowledge/*.md` 而非 `**/*.md`，避免匹配到 `.obsidian/` 下的文件。
+
+## Frontmatter 处理规则
+
+knowledge/ 和 impressions/ 中的文件可能包含 YAML frontmatter（`---` 包裹的头部）。
+
+**读取时**：跳过 frontmatter 部分，只处理正文内容。避免将 frontmatter 中的元数据当作知识内容。
+**写入时**：新建或更新文件时，必须保留或生成 frontmatter（格式见下方各流程说明）。
+**搜索时**：Grep 搜索结果如果命中 frontmatter 行（如 `tags:`），不算有效匹配，需继续看正文。
 
 ---
 
@@ -138,12 +158,25 @@ memoryDir/
 
 2. **选择或创建 knowledge 文件**：
    - 用 Glob 列出 `knowledge/` 目录已有文件
-   - 如果有匹配领域的文件，读取并在合适位置追加/更新
+   - 如果有匹配领域的文件，读取并在合适位置追加/更新（保留已有 frontmatter）
    - 如果没有，创建新文件，文件名格式：`领域-子领域.md`（英文 kebab-case）
+   - **新建 knowledge 文件时必须包含 frontmatter**：
+     ```yaml
+     ---
+     title: "文件标题"
+     type: knowledge
+     created: YYYY-MM-DD
+     updated: YYYY-MM-DD
+     tags: [tag1, tag2]
+     confidence: high
+     ---
+     ```
+   - **更新已有文件时**：更新 frontmatter 中的 `updated` 日期
 
 3. **更新 index.md**：
    - 在合适的分区（关于用户 / 活跃话题 / 重要提醒 / 近期上下文）添加一行索引
-   - 索引条目格式：`- [YYYY-MM-DD] 简短描述（~15字）→ knowledge/文件名.md`
+   - 索引条目格式：`- [YYYY-MM-DD] 简短描述（~15字）→ [[文件名]]`（Obsidian wikilink，不含目录前缀和 .md 后缀）
+   - 示例：`- [2026-04-05] lark-bridge 插件设计 → [[feishu-bridge]]`
    - 如果是对已有条目的更新，修改而非新增
    - 检查分区是否超过上限，如超过则移动最旧/最低优先级条目到「备用」
 
@@ -208,6 +241,16 @@ memoryDir/
 
 impression 文件格式：
 ```markdown
+---
+title: "主题描述"
+type: impression
+date: YYYY-MM-DD
+channel: flow|main|feishu
+session_id: "sessionId"
+tags: [tag1, tag2, tag3]
+produces: [[相关knowledge文件名]]
+---
+
 # Session: YYYY-MM-DD 主题描述
 
 - **项目**: 对话发生时的项目路径
@@ -226,20 +269,26 @@ impression 文件格式：
 - 用户对 X 表示满意/不满/感兴趣
 
 ## 关联知识
-- → knowledge/相关文件.md（新增/更新了什么）
+- [[相关knowledge文件名]]（新增/更新了什么）
 ```
+
+注意：关联知识使用 `[[wikilink]]` 格式（shortest-path，不含目录前缀和 .md 后缀），不再使用 `→ knowledge/xxx.md` 指针格式。
 
 #### 步骤 4：更新 knowledge 文件
 
 如果对话中包含应持久化的知识：
 - 更新或创建对应的 knowledge/ 文件
 - 与 remember 操作类似的分类逻辑
+- 新建文件必须包含 YAML frontmatter（见 remember 流程中的模板）
+- 更新已有文件时更新 frontmatter 中的 `updated` 日期
+- 文件内容中引用其他文件使用 `[[wikilink]]` 格式
 
 #### 步骤 5：更新 index.md
 
 - 在「近期上下文」分区添加本次会话的摘要条目
-- 格式：`- [YYYY-MM-DD] 会话摘要（~15字）→ impressions/文件名.md`
+- 格式：`- [YYYY-MM-DD] 会话摘要（~15字）→ [[impression文件名]]`
 - 如果对话中有重要事实，也在对应分区添加/更新索引条目
+- knowledge 引用格式：`- [YYYY-MM-DD] 描述 → [[knowledge文件名]]`
 - 检查各分区上限，如超过则降级到「备用」或删除最旧条目
 
 #### 步骤 6：交叉修复
@@ -254,6 +303,30 @@ impression 文件格式：
 - 增加 `totalImpressions`
 - 增加 `indexVersion`
 - 如有新 knowledge 文件，增加 `totalKnowledgeFiles`
+
+#### 步骤 8：追加 changelog.md
+
+在 `changelog.md` 的 `# Changelog` 标题后、已有条目之前，追加本次 wrapup 的变更记录：
+
+```markdown
+## YYYY-MM-DD HH:MM
+- **wrapup**: session <sessionId> (<channel>, <duration>)
+- **新建**: impressions/YYYY-MM-DD_主题.md
+- **更新**: knowledge/xxx.md (+变更摘要)
+- **索引**: 添加 N 条到「近期上下文」
+```
+
+如果 changelog.md 不存在，创建它（带 frontmatter）：
+```markdown
+---
+title: "Memory Changelog"
+type: meta
+---
+
+# Changelog
+```
+
+**膨胀控制**：如果 changelog.md 超过 500 行，将旧条目（超过 3 个月的）归档到 `changelog-YYYY-Qn.md`（按季度分片），只在主文件保留最近 3 个月的记录。
 
 ---
 
@@ -306,7 +379,8 @@ cp memoryDir/index.md memoryDir/index.md.bak
 - 检查是否有：
   - 指向不存在文件的悬空引用（修复或移除）
   - 重复条目（合并）
-  - 格式不规范的条目（修正为 `[YYYY-MM-DD] 描述 → 文件路径`）
+  - 旧格式指针引用（`→ knowledge/xxx.md`），统一转换为 `→ [[xxx]]` wikilink 格式
+  - 格式不规范的条目（修正为 `[YYYY-MM-DD] 描述 → [[文件名]]`）
   - 内容过于模糊的条目（如只写了"聊了一些东西"）
 - 确保各分区标题和注释完整
 
@@ -326,6 +400,17 @@ cp memoryDir/index.md memoryDir/index.md.bak
 - 重新计算 `totalImpressions`（count impressions/ 非 archived 文件）
 - 重新计算 `totalKnowledgeFiles`（count knowledge/ 文件）
 
+#### 步骤 8：追加 changelog.md
+
+在 changelog.md 追加本次 global_sleep 的变更记录：
+
+```markdown
+## YYYY-MM-DD HH:MM
+- **global_sleep**: 索引压缩 vN，归档 M 条 impression
+- **更新**: personality.md (变更摘要)
+- **拆分/合并**: knowledge/xxx.md → knowledge/yyy.md + knowledge/zzz.md
+```
+
 ---
 
 ## 索引自我修复规则
@@ -335,7 +420,7 @@ cp memoryDir/index.md memoryDir/index.md.bak
 1. **悬空引用**：索引指向的文件不存在 → 移除该索引条目
 2. **孤立文件**：knowledge/ 或 impressions/ 中的文件未被索引引用 → 在索引中补充条目
 3. **分区溢出**：某分区超过上限 → 立即执行降级
-4. **格式异常**：条目不符合 `[YYYY-MM-DD] 描述 → 路径` 格式 → 就地修正
+4. **格式异常**：条目不符合 `[YYYY-MM-DD] 描述 → [[文件名]]` 格式 → 就地修正（旧格式 `→ knowledge/xxx.md` 转为 `→ [[xxx]]`）
 5. **日期缺失**：条目没有日期标记 → 从文件修改时间或内容推断日期
 
 ---
@@ -350,7 +435,7 @@ cp memoryDir/index.md memoryDir/index.md.bak
 
 4. **分区上限**：严格遵守各分区条目数上限。超出时必须降级或删除
 
-5. **索引条目格式**：`- [YYYY-MM-DD] 简短描述 → knowledge/xxx.md` 或 `- [YYYY-MM-DD] 简短描述 → impressions/xxx.md`
+5. **索引条目格式**：`- [YYYY-MM-DD] 简短描述 → [[文件名]]`（wikilink，shortest-path，不含目录前缀和 .md 后缀）
 
 6. **信息保真**：保留限定词（"可能"、"大概"、"之前"），不将不确定信息写成确定事实
 

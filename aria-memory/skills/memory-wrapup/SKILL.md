@@ -30,3 +30,6 @@ ls -t ~/.claude/projects/*/*.jsonl 2>/dev/null | head -5
 ```
 
 Report what was captured and stored.
+
+Note: The memory-agent will produce impression files with YAML frontmatter and `[[wikilink]]` references,
+update index.md using wikilink format, and append a changelog entry to changelog.md.

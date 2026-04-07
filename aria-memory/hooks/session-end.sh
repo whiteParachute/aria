@@ -60,4 +60,16 @@ if not any(p.get('transcriptPath') == transcript_path for p in pending):
 PYEOF
 fi
 
+# === Git sync: commit and push memory changes ===
+if [ -d "$MEMORY_DIR/.git" ]; then
+  (
+    cd "$MEMORY_DIR"
+    if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+      git add -A
+      git commit -m "sync: session wrapup $(date +%Y-%m-%d_%H:%M)" --quiet 2>/dev/null
+      git push origin main --quiet 2>/dev/null
+    fi
+  ) || true
+fi
+
 exit 0
