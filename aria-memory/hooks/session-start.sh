@@ -30,6 +30,20 @@ if [ -f "$MEMORY_DIR/personality.md" ]; then
   CONTEXT="$CONTEXT\n\n## User Interaction Patterns\n\n<personality-notes>\n$PERSONALITY\n</personality-notes>"
 fi
 
+# === 2.5 注入最近 daily 摘要 ===
+DAILY_DIR="$MEMORY_DIR/daily"
+if [ -d "$DAILY_DIR" ]; then
+  # Get the 3 most recent daily files (sorted descending by filename = by date)
+  DAILY_FILES=$(ls -r "$DAILY_DIR"/????-??-??.md 2>/dev/null | head -3)
+  if [ -n "$DAILY_FILES" ]; then
+    DAILY_CONTENT=""
+    for f in $DAILY_FILES; do
+      DAILY_CONTENT="$DAILY_CONTENT$(cat "$f")\n\n---\n\n"
+    done
+    CONTEXT="$CONTEXT\n\n## Recent Daily Summaries\n\n<daily-summaries>\n$DAILY_CONTENT</daily-summaries>"
+  fi
+fi
+
 # === 3. 记忆系统使用指南 ===
 MEMORY_GUIDE=$(cat << 'MEMGUIDE'
 ## 记忆系统

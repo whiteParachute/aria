@@ -18,7 +18,7 @@ Pass this request to the memory-agent subagent:
 }
 ```
 
-This will perform the 7-step maintenance process:
+This will perform the 9-step maintenance process:
 1. Backup index.md
 2. Compact index.md (capacity-based cleanup)
 3. Expire old reminders and archive old impressions
@@ -26,5 +26,7 @@ This will perform the 7-step maintenance process:
 5. Self-audit index quality
 6. Update personality.md
 7. Update meta.json
+8. Generate missing daily summaries (scan impressions by date, create missing daily/YYYY-MM-DD.md)
+9. Append changelog.md
 
 Report a summary of what was done.

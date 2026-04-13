@@ -359,7 +359,7 @@ HH:MM 使用 UTC+8 北京时间。如果无法精确获取会话时间，从 tra
 
 ---
 
-### 四、global_sleep — 全局维护（7 步）
+### 四、global_sleep — 全局维护（9 步）
 
 收到 global_sleep 请求时：
 
@@ -370,7 +370,7 @@ HH:MM 使用 UTC+8 北京时间。如果无法精确获取会话时间，从 tra
 }
 ```
 
-**执行 7 个步骤**：
+**执行 9 个步骤**：
 
 #### 步骤 1：备份 index.md
 
@@ -428,8 +428,44 @@ cp memoryDir/index.md memoryDir/index.md.bak
 - 更新 `indexVersion`
 - 重新计算 `totalImpressions`（count impressions/ 非 archived 文件）
 - 重新计算 `totalKnowledgeFiles`（count knowledge/ 文件）
+- 重新计算 `totalDailyFiles`（count daily/ 文件）
 
-#### 步骤 8：追加 changelog.md
+#### 步骤 8：生成每日摘要（daily 补全）
+
+session_wrapup 步骤 9 会在每次 wrapup 时向 daily 文件追加一行指针。但如果 wrapup 失败或遗漏，某些日期可能缺少 daily 文件。此步骤批量补全：
+
+1. 用 Glob 列出 `impressions/YYYY-MM-DD_*.md` 所有文件（不含 archived/），提取不重复的日期集合
+2. 用 Glob 列出 `daily/YYYY-MM-DD.md` 已有文件，得到已生成的日期集合
+3. 对每个缺失 daily 的日期：
+   - 读取该日期所有 impression 文件
+   - 综合生成 `daily/YYYY-MM-DD.md`，格式如下：
+
+```markdown
+---
+title: "Daily: YYYY-MM-DD"
+type: daily
+date: YYYY-MM-DD
+sessions: N
+---
+
+## 今日进展
+- 进展1：一句话描述完成了什么
+
+## 关键决策
+- [决策] 决策描述及理由
+
+## 未解决 / 明日跟进
+- 待办事项
+```
+
+**生成规则**：
+- 只写有实质内容的段落——无决策则省略「关键决策」段，无待办则省略「未解决」段
+- 每段控制在 3-5 条以内，总文件不超过 20 行正文
+- 「今日进展」聚焦成果而非过程（"完成了X"而非"讨论了X"）
+- 跳过 `impressions/archived/` 中的文件，只处理活跃 impressions
+- 如果该日期已有 daily 文件（由 wrapup Step 9 创建），跳过不覆盖
+
+#### 步骤 9：追加 changelog.md
 
 在 changelog.md 追加本次 global_sleep 的变更记录：
 
@@ -438,6 +474,7 @@ cp memoryDir/index.md memoryDir/index.md.bak
 - **global_sleep**: 索引压缩 vN，归档 M 条 impression
 - **更新**: personality.md (变更摘要)
 - **拆分/合并**: knowledge/xxx.md → knowledge/yyy.md + knowledge/zzz.md
+- **daily 补全**: 新生成 N 个 daily 文件
 ```
 
 ---
