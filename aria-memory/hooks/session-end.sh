@@ -60,14 +60,46 @@ if not any(p.get('transcriptPath') == transcript_path for p in pending):
 PYEOF
 fi
 
-# === Git sync: commit and push memory changes ===
+# === Git sync: commit and push with retry (max 3 attempts) ===
 if [ -d "$MEMORY_DIR/.git" ]; then
   (
     cd "$MEMORY_DIR"
     if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
       git add -A
-      git commit -m "sync: session wrapup $(date +%Y-%m-%d_%H:%M)" --quiet 2>/dev/null
-      git push origin main --quiet 2>/dev/null
+      COMMIT_ERR=$(git commit -m "sync: session wrapup $(date +%Y-%m-%d_%H:%M)" 2>&1) || {
+        # Commit itself failed — record the real error, don't mask as push failure
+        echo "Failed at: $(date -u +%Y-%m-%dT%H:%M:%S+00:00)" > "$MEMORY_DIR/.git-push-failed"
+        echo "Stage: git commit" >> "$MEMORY_DIR/.git-push-failed"
+        echo "Error: $COMMIT_ERR" >> "$MEMORY_DIR/.git-push-failed"
+        exit 0
+      }
+
+      # Push with retry: pull --rebase on failure, max 3 attempts
+      PUSH_OK=0
+      LAST_ERR=""
+      for ATTEMPT in 1 2 3; do
+        LAST_ERR=$(git push origin main 2>&1) && { PUSH_OK=1; break; }
+        # Pull with rebase before retry
+        REBASE_ERR=$(git pull --rebase origin main 2>&1) || {
+          # Rebase failed (conflict) — abort and record
+          git rebase --abort 2>/dev/null || true
+          LAST_ERR="pull --rebase failed: $REBASE_ERR"
+          break
+        }
+      done
+
+      if [ "$PUSH_OK" -eq 1 ]; then
+        # Clear any previous failure marker on success
+        rm -f "$MEMORY_DIR/.git-push-failed"
+      else
+        # Write marker file with accurate stage info
+        echo "Failed at: $(date -u +%Y-%m-%dT%H:%M:%S+00:00)" > "$MEMORY_DIR/.git-push-failed"
+        echo "Stage: git push (after $ATTEMPT attempts)" >> "$MEMORY_DIR/.git-push-failed"
+        echo "Last error: $LAST_ERR" >> "$MEMORY_DIR/.git-push-failed"
+        echo "Working dir: $(pwd)" >> "$MEMORY_DIR/.git-push-failed"
+        echo "Git status:" >> "$MEMORY_DIR/.git-push-failed"
+        git status --short >> "$MEMORY_DIR/.git-push-failed" 2>/dev/null
+      fi
     fi
   ) || true
 fi

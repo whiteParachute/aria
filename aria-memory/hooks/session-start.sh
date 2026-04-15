@@ -95,25 +95,39 @@ if [ "$PENDING" -gt 0 ]; then
   CONTEXT="$CONTEXT\n\n## CRITICAL: Pending Memory Wrapups\n\nThere are $PENDING unprocessed session transcripts from previous sessions. BEFORE responding to the user's first message, you MUST call the memory-agent subagent to process them:\n\n{\"type\":\"session_wrapup\",\"memoryDir\":\"$MEMORY_DIR\",\"processPending\":true}\n\nThis ensures your memory index is up-to-date with information from previous sessions."
 fi
 
-# === 5. 维护状态提示 ===
+# === 5. 检查 Git push 失败标记 ===
+if [ -f "$MEMORY_DIR/.git-push-failed" ]; then
+  FAIL_INFO=$(cat "$MEMORY_DIR/.git-push-failed")
+  CONTEXT="$CONTEXT\n\n## ⚠️ Git Push Failure Detected\n\nA previous Git push operation failed after 3 retries. Details:\n\`\`\`\n$FAIL_INFO\n\`\`\`\n\n**Action needed**: Please check the Git status in $MEMORY_DIR and resolve the issue manually. After resolving, delete the \`.git-push-failed\` file."
+fi
+
+# === 6. 维护状态提示 ===
 LAST_SLEEP="never"
 HOURS_AGO=999999
 UNPROCESSED=0
-if [ -f "$MEMORY_DIR/meta.json" ]; then
-  SLEEP_INFO=$(python3 - "$MEMORY_DIR/meta.json" "$MEMORY_DIR/impressions" << 'PYEOF'
-import json, sys, os, time
+
+# Read .last-sleep-at (Git-synced cross-machine watermark) with meta.json fallback
+SLEEP_INFO=$(python3 - "$MEMORY_DIR" << 'PYEOF'
+import sys, os, time, json
 from datetime import datetime
 
-meta = json.load(open(sys.argv[1]))
-impressions_dir = sys.argv[2]
+memory_dir = sys.argv[1]
+last_sleep_file = os.path.join(memory_dir, '.last-sleep-at')
+meta_file = os.path.join(memory_dir, 'meta.json')
+impressions_dir = os.path.join(memory_dir, 'impressions')
 
-last = meta.get('lastGlobalSleepAt')
+# Priority: .last-sleep-at (Git-synced) > meta.json (local cache)
+last = None
+if os.path.isfile(last_sleep_file):
+    last = open(last_sleep_file).read().strip()
+if not last and os.path.isfile(meta_file):
+    last = json.load(open(meta_file)).get('lastGlobalSleepAt')
+
 if not last:
     last_str = 'never'
     hours_ago = 999999
     last_ts = 0
 else:
-    # Python < 3.11 doesn't support 'Z' suffix in fromisoformat
     last_fixed = last.replace('Z', '+00:00')
     diff = time.time() - datetime.fromisoformat(last_fixed).timestamp()
     last_str = last
@@ -131,12 +145,11 @@ if os.path.isdir(impressions_dir):
 
 print(f'{last_str} {hours_ago} {unprocessed}')
 PYEOF
-  ) 2>/dev/null
-  SLEEP_INFO="${SLEEP_INFO:-never 999999 0}"
-  LAST_SLEEP=$(echo "$SLEEP_INFO" | awk '{print $1}')
-  HOURS_AGO=$(echo "$SLEEP_INFO" | awk '{print $2}')
-  UNPROCESSED=$(echo "$SLEEP_INFO" | awk '{print $3}')
-fi
+) 2>/dev/null
+SLEEP_INFO="${SLEEP_INFO:-never 999999 0}"
+LAST_SLEEP=$(echo "$SLEEP_INFO" | awk '{print $1}')
+HOURS_AGO=$(echo "$SLEEP_INFO" | awk '{print $2}')
+UNPROCESSED=$(echo "$SLEEP_INFO" | awk '{print $3}')
 
 MAINT_MSG="## Memory Maintenance\n\nLast global_sleep: $LAST_SLEEP ($HOURS_AGO hours ago)\nUnprocessed wrapups since last maintenance: $UNPROCESSED"
 
