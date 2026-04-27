@@ -20,6 +20,14 @@ if [ ! -d "$MEMORY_DIR" ]; then
   exit 0
 fi
 
+# Cron-driven /memory-sleep runs invoke claude -p, which would otherwise be
+# recorded as a tiny "session" worth wrapping up. Skip transcript discovery
+# and pendingWrapups recording for those, but still let the git sync block
+# below push any state the sleep produced.
+if [ -n "${ARIA_MEMORY_CRON_RUN:-}" ]; then
+  TRANSCRIPT_PATH=""
+else
+
 # Resolve transcript path by runtime. Keep Claude and Codex contracts separate.
 if [ "$RUNTIME" = "codex" ]; then
   TRANSCRIPT_PATH=$(ARIA_MEMORY_HOOK_INPUT="$INPUT" python3 - "$HOME" <<'PYEOF' 2>/dev/null || true
@@ -170,6 +178,7 @@ if isinstance(path, str):
 PYEOF
   )
 fi
+fi  # end ARIA_MEMORY_CRON_RUN guard (TRANSCRIPT_PATH=""for cron, otherwise resolve normally)
 
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
   # Skip subagent transcripts — only record user-facing sessions
