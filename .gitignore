@@ -1,0 +1,13 @@
+# OMX runtime logs / state (created by codex review, omx setup, etc.)
+.omx/
+
+# Codex sentinel created by `codex` when the dir is trusted
+.codex
+
+# Local Claude project state
+.claude/ralph-loop.local.md
+.claude/projects/
+
+# OS
+.DS_Store
+Thumbs.db

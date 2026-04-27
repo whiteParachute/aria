@@ -5,32 +5,189 @@ set -euo pipefail
 
 INPUT=$(cat)
 MEMORY_DIR="$HOME/.aria-memory"
+RUNTIME="${ARIA_MEMORY_RUNTIME:-}"
+if [ -z "$RUNTIME" ]; then
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    RUNTIME="claude"
+  elif [ -n "${CODEX_PLUGIN_ROOT:-}${CODEX_PLUGIN_DIR:-}${CODEX_PLUGIN_PATH:-}" ]; then
+    RUNTIME="codex"
+  else
+    RUNTIME="unknown"
+  fi
+fi
 
 if [ ! -d "$MEMORY_DIR" ]; then
   exit 0
 fi
 
-# Extract transcript_path from hook input JSON
-TRANSCRIPT_PATH=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('transcript_path',''))" 2>/dev/null || echo "")
+# Resolve transcript path by runtime. Keep Claude and Codex contracts separate.
+if [ "$RUNTIME" = "codex" ]; then
+  TRANSCRIPT_PATH=$(ARIA_MEMORY_HOOK_INPUT="$INPUT" python3 - "$HOME" <<'PYEOF' 2>/dev/null || true
+import json
+import os
+import sqlite3
+import sys
 
-if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
-  exit 0
+home = sys.argv[1]
+raw = os.environ.get("ARIA_MEMORY_HOOK_INPUT", "")
+try:
+    payload = json.loads(raw or "{}")
+except Exception:
+    payload = {}
+
+direct_path_keys = {"rollout_path", "rolloutPath", "transcript_path", "transcriptPath"}
+id_keys = {
+    "session_id",
+    "sessionId",
+    "thread_id",
+    "threadId",
+    "conversation_id",
+    "conversationId",
+    "id",
+}
+cwd_keys = {"cwd", "working_directory", "workingDirectory"}
+
+paths = []
+ids = []
+cwds = []
+
+def walk(value):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in direct_path_keys and isinstance(item, str):
+                paths.append(item)
+            elif key in id_keys and isinstance(item, str):
+                ids.append(item)
+            elif key in cwd_keys and isinstance(item, str):
+                cwds.append(item)
+            walk(item)
+    elif isinstance(value, list):
+        for item in value:
+            walk(item)
+
+walk(payload)
+
+for env_key in (
+    "CODEX_SESSION_ID",
+    "CODEX_THREAD_ID",
+    "CODEX_COMPANION_SESSION_ID",
+):
+    value = os.environ.get(env_key)
+    if value:
+        ids.append(value)
+
+for path in paths:
+    expanded = os.path.expanduser(path)
+    if os.path.isfile(expanded):
+        print(expanded)
+        raise SystemExit(0)
+
+codex_dir = os.environ.get("CODEX_HOME") or os.path.join(home, ".codex")
+state_paths = [
+    os.path.join(codex_dir, name)
+    for name in sorted(os.listdir(codex_dir), reverse=True)
+    if name.startswith("state_") and name.endswith(".sqlite")
+] if os.path.isdir(codex_dir) else []
+
+def query_one(sql, params=()):
+    for db_path in state_paths:
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.2)
+            try:
+                row = conn.execute(sql, params).fetchone()
+            finally:
+                conn.close()
+        except Exception:
+            continue
+        if row and row[0] and os.path.isfile(row[0]):
+            return row[0]
+    return None
+
+for thread_id in ids:
+    result = query_one("select rollout_path from threads where id = ? limit 1", (thread_id,))
+    if result:
+        print(result)
+        raise SystemExit(0)
+
+# Last-resort Codex fallback for hook payloads that include cwd but no thread id.
+# Restrict to top-level CLI threads to avoid recording subagent rollout files.
+for cwd in cwds:
+    result = query_one(
+        """
+        select rollout_path
+          from threads
+         where cwd = ?
+           and source = 'cli'
+           and (agent_path is null or agent_path = '')
+         order by updated_at_ms desc, updated_at desc
+         limit 1
+        """,
+        (cwd,),
+    )
+    if result:
+        print(result)
+        raise SystemExit(0)
+PYEOF
+  )
+elif [ "$RUNTIME" = "claude" ]; then
+  TRANSCRIPT_PATH=$(ARIA_MEMORY_HOOK_INPUT="$INPUT" python3 - <<'PYEOF' 2>/dev/null || true
+import json
+import os
+
+raw = os.environ.get("ARIA_MEMORY_HOOK_INPUT", "")
+try:
+    payload = json.loads(raw or "{}")
+except Exception:
+    payload = {}
+
+path = ""
+if isinstance(payload, dict):
+    path = payload.get("transcript_path") or payload.get("transcriptPath") or ""
+if isinstance(path, str):
+    expanded = os.path.expanduser(path)
+    if os.path.isfile(expanded):
+        print(expanded)
+PYEOF
+  )
+else
+  TRANSCRIPT_PATH=$(ARIA_MEMORY_HOOK_INPUT="$INPUT" python3 - <<'PYEOF' 2>/dev/null || true
+import json
+import os
+
+raw = os.environ.get("ARIA_MEMORY_HOOK_INPUT", "")
+try:
+    payload = json.loads(raw or "{}")
+except Exception:
+    payload = {}
+
+path = ""
+if isinstance(payload, dict):
+    path = payload.get("transcript_path") or payload.get("transcriptPath") or ""
+if isinstance(path, str):
+    expanded = os.path.expanduser(path)
+    if os.path.isfile(expanded):
+        print(expanded)
+PYEOF
+  )
 fi
 
-# Skip subagent transcripts — only record user-facing sessions
-# Subagent transcripts are typically short and located outside the main project directory pattern
-BASENAME=$(basename "$TRANSCRIPT_PATH")
-if echo "$TRANSCRIPT_PATH" | grep -qE '/(agent|subagent)/'; then
-  exit 0
-fi
-# Heuristic: skip very small transcripts (< 5 lines) likely from subagent sessions
-LINE_COUNT=$(wc -l < "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
-if [ "$LINE_COUNT" -lt 5 ]; then
-  exit 0
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  # Skip subagent transcripts — only record user-facing sessions
+  if echo "$TRANSCRIPT_PATH" | grep -qE '/(agent|subagent)/'; then
+    TRANSCRIPT_PATH=""
+  fi
 fi
 
-# Add to pendingWrapups in meta.json
-if [ -f "$MEMORY_DIR/meta.json" ]; then
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  # Heuristic: skip very small transcripts (< 5 lines) likely from subagent sessions
+  LINE_COUNT=$(wc -l < "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+  if [ "$LINE_COUNT" -lt 5 ]; then
+    TRANSCRIPT_PATH=""
+  fi
+fi
+
+# Add to pendingWrapups in meta.json when a transcript can be resolved.
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ] && [ -f "$MEMORY_DIR/meta.json" ]; then
   python3 - "$MEMORY_DIR/meta.json" "$TRANSCRIPT_PATH" << 'PYEOF'
 import json, sys, os, tempfile
 from datetime import datetime, timezone
@@ -64,6 +221,10 @@ fi
 if [ -d "$MEMORY_DIR/.git" ]; then
   (
     cd "$MEMORY_DIR"
+    # Do NOT clear the failure marker up-front: if working tree is clean and we
+    # never even try a sync, the previous failure is still unresolved and the
+    # marker is the only signal the next SessionStart shows the user. The marker
+    # is cleared only after a successful push below.
     if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
       git add -A
       COMMIT_ERR=$(git commit -m "sync: session wrapup $(date +%Y-%m-%d_%H:%M)" 2>&1) || {

@@ -1,0 +1,33 @@
+{
+  "name": "aria-memory",
+  "version": "0.1.0",
+  "description": "Persistent long-term memory system for Codex and Claude Code with shared local storage, manual recall, storage, status, and conditional transcript maintenance.",
+  "author": {
+    "name": "ar8327"
+  },
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "context",
+    "persistence",
+    "knowledge-management",
+    "codex"
+  ],
+  "skills": "./codex/skills",
+  "hooks": "./hooks.json",
+  "interface": {
+    "runtime": "codex",
+    "sharedMemoryDir": "~/.aria-memory",
+    "sharedSpec": "./codex/references/memory-agent-spec.md",
+    "coreWorkflows": [
+      "memory",
+      "remember",
+      "memory-status"
+    ],
+    "conditionalWorkflows": [
+      "memory-wrapup",
+      "memory-sleep",
+      "memory-auto-maintain"
+    ]
+  }
+}

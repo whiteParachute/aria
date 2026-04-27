@@ -3,7 +3,7 @@
 
 MEMORY_DIR="$HOME/.aria-memory"
 
-mkdir -p "$MEMORY_DIR"/{knowledge,impressions/archived}
+mkdir -p "$MEMORY_DIR"/{knowledge/.pending,impressions/archived,daily}
 
 # Create index.md if not exists
 if [ ! -f "$MEMORY_DIR/index.md" ]; then
@@ -47,3 +47,25 @@ if [ ! -f "$MEMORY_DIR/personality.md" ]; then
   echo "" >> "$MEMORY_DIR/personality.md"
   echo "（尚无足够数据，待 global_sleep 分析后自动生成）" >> "$MEMORY_DIR/personality.md"
 fi
+
+# NOTE: role files (.role.<runtime>) are NOT created here.
+# Each input source — claude code, codex, human (manual obsidian edit), lark-bridge,
+# any future runtime — registers itself by creating .role.<name> on its first
+# session/operation. See hooks/session-start.sh and the per-runtime memory-sleep SKILLs.
+#
+# Default is "secondary" — global_sleep refuses on any (input, machine) pair until the
+# user explicitly elects one as primary by `echo primary > ~/.aria-memory/.role.<name>`.
+#
+# Current convention: SG devbox claude code = primary; everything else = secondary.
+
+# Migrate legacy single .role file (from an earlier prototype) → .role.claude.
+# Claude was the original runtime, so attribute it there; codex / others stay unset
+# until they self-register on first run.
+if [ -f "$MEMORY_DIR/.role" ]; then
+  if [ ! -s "$MEMORY_DIR/.role.claude" ]; then
+    cp "$MEMORY_DIR/.role" "$MEMORY_DIR/.role.claude"
+  fi
+  rm -f "$MEMORY_DIR/.role"
+fi
+
+exit 0
