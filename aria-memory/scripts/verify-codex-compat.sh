@@ -8,6 +8,11 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
+# The verifier itself may be launched from AgentDock. Clear the bypass markers
+# so normal hook behavior remains testable; individual AgentDock-bypass tests
+# set them explicitly.
+unset ARIA_MEMORY_AGENTDOCK_MANAGED HAPPYCLAW_WORKSPACE_IPC HAPPYCLAW_WORKSPACE_MEMORY HAPPYCLAW_GROUP_FOLDER
+
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -136,6 +141,14 @@ printf '{}' | HOME="$home_codex_optin" ARIA_MEMORY_RUNTIME=codex ARIA_MEMORY_COD
 jq . "$TMP_ROOT/session-start-codex-optin.json" >/dev/null || fail "Codex opt-in SessionStart did not emit valid JSON"
 pass "Codex SessionStart can opt in to Claude-compatible context output after local verification"
 
+home_agentdock="$TMP_ROOT/home-agentdock"
+mkdir -p "$home_agentdock"
+HOME="$home_agentdock" CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" bash "$PLUGIN_DIR/scripts/init-memory-dir.sh"
+agentdock_start_out="$TMP_ROOT/session-start-agentdock.out"
+printf '{}' | HOME="$home_agentdock" CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" HAPPYCLAW_WORKSPACE_IPC="$home_agentdock/ipc" bash "$PLUGIN_DIR/hooks/session-start.sh" > "$agentdock_start_out"
+[ ! -s "$agentdock_start_out" ] || fail "SessionStart emitted Aria context inside AgentDock-managed session"
+pass "SessionStart skips Aria context inside AgentDock-managed sessions"
+
 home_missing_transcript="$TMP_ROOT/home-missing-transcript"
 mkdir -p "$home_missing_transcript"
 HOME="$home_missing_transcript" CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" bash "$PLUGIN_DIR/scripts/init-memory-dir.sh"
@@ -157,6 +170,16 @@ cp "$home_missing_transcript/.aria-memory/meta.json" "$after_meta"
 cmp -s "$before_meta" "$after_meta" || fail "SessionEnd changed meta.json for a small transcript"
 pass "SessionEnd skips small transcripts without meta changes"
 
+agentdock_memory_transcript="$home_missing_transcript/agentdock-memory.jsonl"
+for i in 1 2 3 4 5; do
+  printf '{"type":"user","cwd":"/data00/home/user/self-codes/agent-dock/data/memory/session","message":{"content":"你现在以 AgentDock memory agent 的身份工作。"}}\n' >> "$agentdock_memory_transcript"
+done
+cp "$home_missing_transcript/.aria-memory/meta.json" "$before_meta"
+printf '{"transcript_path":"%s"}' "$agentdock_memory_transcript" | HOME="$home_missing_transcript" bash "$PLUGIN_DIR/hooks/session-end.sh"
+cp "$home_missing_transcript/.aria-memory/meta.json" "$after_meta"
+cmp -s "$before_meta" "$after_meta" || fail "SessionEnd changed meta.json for AgentDock memory-agent transcript"
+pass "SessionEnd skips AgentDock memory-agent transcripts without recursive pending"
+
 home_with_transcript="$TMP_ROOT/home-with-transcript"
 mkdir -p "$home_with_transcript"
 HOME="$home_with_transcript" CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" bash "$PLUGIN_DIR/scripts/init-memory-dir.sh"
@@ -173,6 +196,19 @@ pending = meta.get("pendingWrapups", [])
 assert len(pending) == 1, pending
 PY
 pass "SessionEnd records valid transcript once and deduplicates"
+
+home_agentdock_end="$TMP_ROOT/home-agentdock-end"
+mkdir -p "$home_agentdock_end"
+HOME="$home_agentdock_end" CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" bash "$PLUGIN_DIR/scripts/init-memory-dir.sh"
+agentdock_transcript="$home_agentdock_end/session.jsonl"
+for i in 1 2 3 4 5; do
+  printf '{"type":"user","message":{"content":"hello"}}\n' >> "$agentdock_transcript"
+done
+cp "$home_agentdock_end/.aria-memory/meta.json" "$before_meta"
+printf '{"transcript_path":"%s"}' "$agentdock_transcript" | HOME="$home_agentdock_end" HAPPYCLAW_WORKSPACE_IPC="$home_agentdock_end/ipc" bash "$PLUGIN_DIR/hooks/session-end.sh"
+cp "$home_agentdock_end/.aria-memory/meta.json" "$after_meta"
+cmp -s "$before_meta" "$after_meta" || fail "SessionEnd changed meta.json inside AgentDock-managed session"
+pass "SessionEnd skips Aria pending/git sync inside AgentDock-managed sessions"
 
 home_codex_transcript="$TMP_ROOT/home-codex-transcript"
 mkdir -p "$home_codex_transcript/.codex"
@@ -302,6 +338,12 @@ events = meta.get("compactionEvents", [])
 assert len(events) == 10, events
 PY
 pass "PreCompact records compaction events and keeps the last 10"
+
+cp "$home_precompact/.aria-memory/meta.json" "$before_meta"
+printf '{}' | HOME="$home_precompact" HAPPYCLAW_WORKSPACE_IPC="$home_precompact/ipc" bash "$PLUGIN_DIR/hooks/pre-compact.sh"
+cp "$home_precompact/.aria-memory/meta.json" "$after_meta"
+cmp -s "$before_meta" "$after_meta" || fail "PreCompact changed meta.json inside AgentDock-managed session"
+pass "PreCompact skips Aria meta updates inside AgentDock-managed sessions"
 
 if command -v git >/dev/null; then
   home_git="$TMP_ROOT/home-git"

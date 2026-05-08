@@ -8,6 +8,17 @@ MEMORY_DIR="$HOME/.aria-memory"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 . "$SCRIPT_DIR/../scripts/plugin-root.sh"
 PLUGIN_ROOT="$(aria_memory_resolve_plugin_root "${BASH_SOURCE[0]}")" || exit 0
+
+# AgentDock/HappyClaw already owns IM routing, IPC turn delivery, and its own
+# workspace memory channel. Injecting Aria's long memory context or "process
+# pending wrapups before replying" instruction into those managed runners can
+# delay IPC replies and make queued IM messages flush in a burst. Keep Aria
+# hooks out of AgentDock-managed sessions; use explicit memory tools or the
+# primary cron outside AgentDock for Aria maintenance.
+if [ -n "${ARIA_MEMORY_AGENTDOCK_MANAGED:-}${HAPPYCLAW_WORKSPACE_IPC:-}${HAPPYCLAW_WORKSPACE_MEMORY:-}${HAPPYCLAW_GROUP_FOLDER:-}" ]; then
+  exit 0
+fi
+
 RUNTIME="${ARIA_MEMORY_RUNTIME:-}"
 if [ -z "$RUNTIME" ]; then
   if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then

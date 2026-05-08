@@ -10,15 +10,40 @@ allowed-tools: [Agent, Read, Bash]
 
 Trigger a manual session wrapup:
 
-1. Find the current session's transcript file. Check for recent JSONL files:
+1. First check for already-recorded pending wrapups:
+
+```bash
+python3 - <<'PY'
+import json, os
+path = os.path.expanduser("~/.aria-memory/meta.json")
+pending = []
+if os.path.isfile(path):
+    pending = json.load(open(path)).get("pendingWrapups", [])
+print(len(pending))
+PY
+```
+
+2. If the pending count is greater than 0, pass a process-pending request to
+   the memory-agent subagent. This is the normal SessionEnd/cron drain path:
+
+```json
+{
+  "type": "session_wrapup",
+  "memoryDir": "!`echo $HOME/.aria-memory`",
+  "processPending": true
+}
+```
+
+3. If there are no pending wrapups, find the current session's transcript file.
+   Check for recent JSONL files:
 
 ```bash
 ls -t ~/.claude/projects/*/*.jsonl 2>/dev/null | head -5
 ```
 
-2. Select the most recent transcript file that matches the current session.
+4. Select the most recent transcript file that matches the current session.
 
-3. Pass to memory-agent subagent:
+5. Pass to memory-agent subagent:
 
 ```json
 {

@@ -6,6 +6,10 @@ set -euo pipefail
 INPUT=$(cat)
 MEMORY_DIR="$HOME/.aria-memory"
 
+if [ -n "${ARIA_MEMORY_AGENTDOCK_MANAGED:-}${HAPPYCLAW_WORKSPACE_IPC:-}${HAPPYCLAW_WORKSPACE_MEMORY:-}${HAPPYCLAW_GROUP_FOLDER:-}" ]; then
+  exit 0
+fi
+
 if [ ! -f "$MEMORY_DIR/meta.json" ]; then
   exit 0
 fi

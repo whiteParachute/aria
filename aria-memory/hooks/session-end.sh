@@ -20,6 +20,14 @@ if [ ! -d "$MEMORY_DIR" ]; then
   exit 0
 fi
 
+# AgentDock/HappyClaw sessions have their own IPC and memory lifecycle. Do not
+# record those provider transcripts into Aria pendingWrapups and do not run the
+# Aria vault git-sync from their SessionEnd hook; otherwise memory maintenance
+# can recursively trigger IPC-visible work and interfere with IM delivery.
+if [ -n "${ARIA_MEMORY_AGENTDOCK_MANAGED:-}${HAPPYCLAW_WORKSPACE_IPC:-}${HAPPYCLAW_WORKSPACE_MEMORY:-}${HAPPYCLAW_GROUP_FOLDER:-}" ]; then
+  exit 0
+fi
+
 # Cron-driven /memory-sleep runs invoke claude -p, which would otherwise be
 # recorded as a tiny "session" worth wrapping up. Skip transcript discovery
 # and pendingWrapups recording for those, but still let the git sync block
@@ -191,6 +199,46 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
   # Heuristic: skip very small transcripts (< 5 lines) likely from subagent sessions
   LINE_COUNT=$(wc -l < "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
   if [ "$LINE_COUNT" -lt 5 ]; then
+    TRANSCRIPT_PATH=""
+  fi
+fi
+
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  # AgentDock invokes a dedicated memory-agent under data/memory/... to process
+  # conversation wrapups. Recording those agent transcripts into Aria creates a
+  # feedback loop: Aria sees the memory-agent's own wrapup work as another
+  # pending wrapup, which then produces more memory-agent sessions.
+  if ARIA_MEMORY_TRANSCRIPT_PATH="$TRANSCRIPT_PATH" python3 - <<'PYEOF' 2>/dev/null; then
+import json
+import os
+
+path = os.environ.get("ARIA_MEMORY_TRANSCRIPT_PATH", "")
+skip = False
+
+try:
+    with open(path, "r", errors="ignore") as handle:
+        for _, line in zip(range(80), handle):
+            try:
+                item = json.loads(line)
+            except Exception:
+                continue
+
+            cwd = item.get("cwd")
+            if isinstance(cwd, str) and "/agent-dock/data/memory/" in cwd.replace("\\", "/"):
+                skip = True
+                break
+
+            if item.get("type") == "user":
+                message = item.get("message") or {}
+                content = message.get("content")
+                if isinstance(content, str) and "AgentDock memory agent" in content:
+                    skip = True
+                    break
+except Exception:
+    skip = False
+
+raise SystemExit(0 if skip else 1)
+PYEOF
     TRANSCRIPT_PATH=""
   fi
 fi

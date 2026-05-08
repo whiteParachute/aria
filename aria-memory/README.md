@@ -169,6 +169,14 @@ Codex mode is deliberately safer: `hooks.json` sets `ARIA_MEMORY_RUNTIME=codex`,
 
 `PreCompact` records compaction timestamps in `meta.json` and keeps the latest 10 entries.
 
+AgentDock / HappyClaw managed sessions are intentionally bypassed by all three
+hooks when `ARIA_MEMORY_AGENTDOCK_MANAGED=1` or `HAPPYCLAW_WORKSPACE_*`
+environment variables are present. AgentDock owns its own IPC delivery and
+workspace memory lifecycle; Aria hook injection or pending-wrapup recording in
+those sessions can delay IM replies or recursively enqueue memory-agent
+transcripts. Use explicit AgentDock memory tools there, and let Aria's primary
+cron maintain the Aria vault outside the AgentDock IPC loop.
+
 ## Git Sync
 
 Git sync remains enabled for both runtimes when `~/.aria-memory/.git` exists.

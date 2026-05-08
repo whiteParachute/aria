@@ -57,6 +57,28 @@ fi
 # Marker so session-end.sh skips wrapup recording for cron-driven runs.
 export ARIA_MEMORY_CRON_RUN=1
 
+# Drain recorded SessionEnd wrapups before global sleep. global_sleep merges
+# knowledge/.pending/ but does not consume meta.json.pendingWrapups itself.
+PENDING=0
+if [ -f "$MEMORY_DIR/meta.json" ]; then
+  PENDING=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1])).get("pendingWrapups",[])))' "$MEMORY_DIR/meta.json" 2>/dev/null || echo 0)
+fi
+
+if [ "${PENDING:-0}" -gt 0 ]; then
+  log "begin: claude -p /memory-wrapup pending=$PENDING"
+  set +e
+  timeout 900 "$CLAUDE_BIN" \
+    --print \
+    --no-session-persistence \
+    --permission-mode bypassPermissions \
+    --output-format text \
+    "/memory-wrapup" \
+    < /dev/null >> "$LOG" 2>&1
+  WRAPUP_RC=$?
+  set -e
+  log "end: memory-wrapup rc=$WRAPUP_RC"
+fi
+
 # 10 minute hard cap — global_sleep on a healthy vault is well under this.
 # stdin redirected from /dev/null so claude does not wait 3s for piped input.
 set +e
