@@ -49,6 +49,14 @@ fi
 if [ -d "$MEMORY_DIR/.git" ]; then
   (
     cd "$MEMORY_DIR"
+    if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+      # A dirty vault is normal when a previous runtime generated memory but
+      # has not reached SessionEnd yet. `git pull --rebase` would fail with
+      # "unstaged changes" and create a misleading push-failure marker. Let
+      # SessionEnd commit/push the local work first; a later clean SessionStart
+      # can pull remote changes.
+      exit 0
+    fi
     PULL_ERR=$(git pull --rebase --quiet origin main 2>&1) || {
       {
         echo "Failed at: $(date -u +%Y-%m-%dT%H:%M:%S+00:00)"

@@ -283,7 +283,10 @@ if [ -d "$MEMORY_DIR/.git" ]; then
     # marker is the only signal the next SessionStart shows the user. The marker
     # is cleared only after a successful push below.
     if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-      git add -A
+      # Keep local sync-failure markers out of semantic memory commits. This
+      # pathspec guard is intentionally duplicated with the vault .gitignore so
+      # an older checkout or a tracked marker cannot be re-added by `git add -A`.
+      git add -A -- ':!.git-push-failed'
       COMMIT_ERR=$(git commit -m "sync: session wrapup $(date +%Y-%m-%d_%H:%M)" 2>&1) || {
         # Commit itself failed — record the real error, don't mask as push failure
         echo "Failed at: $(date -u +%Y-%m-%dT%H:%M:%S+00:00)" > "$MEMORY_DIR/.git-push-failed"
